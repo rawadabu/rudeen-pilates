@@ -1,0 +1,33 @@
+{
+  "name": "rudeen-pilates-app",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "preview": "vite preview",
+    "sync": "npm run build && cap sync",
+    "ios": "npm run build && cap sync ios && cap open ios",
+    "android": "npm run build && cap sync android && cap open android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.5.1",
+    "@capacitor/cli": "^8.5.1",
+    "@capacitor/core": "^8.5.1",
+    "@capacitor/ios": "^8.5.1",
+    "@capacitor/push-notifications": "^8.1.2",
+    "@capacitor/status-bar": "^8.0.3",
+    "@supabase/supabase-js": "^2.53.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^4.5.0",
+    "typescript": "~5.8.3",
+    "vite": "^6.3.5"
+  }
+}
