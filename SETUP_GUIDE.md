@@ -21,7 +21,8 @@ There is no separate instructor account.
    `supabase_patch_v1_5.sql` (the studio edits its own timetable, single
    classes, and adds clients by hand), then `supabase_patch_v1_6.sql`
    (purchase requests switched off, and the reminder an hour before class),
-   then `supabase_patch_v1_7.sql` (cancel a whole day).
+   then `supabase_patch_v1_7.sql` (cancel a whole day), then
+   `supabase_patch_v1_8.sql` (a second reminder, half an hour before class).
    Run them once each, in that order; re-running a patch is harmless.
 3. Deploy the `admin-create-client` edge function — it is what the admin's
    **מתאמנת חדשה** button calls (creating an account needs the service role,
@@ -111,8 +112,8 @@ studio should open the link in Safari and **Add to Home Screen**.
 One edge function, `supabase/functions/push`, delivers everything: new
 booking / cancellation / purchase request to the admins; to the clients, every
 row of `notifications` (pack opened, class cancelled or moved, announcements)
-and a **reminder about an hour before each class they booked** — over web
-push, APNs and FCM.
+and **two reminders before each class they booked, an hour before and half
+an hour before** — over web push, APNs and FCM.
 
 Web (site / installed PWA). There is no CLI on the studio's Mac, so this is
 the dashboard route:
@@ -142,9 +143,17 @@ the dashboard route:
    the home screen / account tab. On iPhone the site must first be added to the
    Home Screen (Safari → Share → Add to Home Screen) and opened from there.
 
-The reminder: `send_class_reminders()` (patch v1.6) runs every 5 minutes by
-cron and picks every booking whose class starts in 50–60 minutes, once. Check
-it with `select * from cron.job_run_details order by start_time desc limit 5;`.
+The reminders: `send_class_reminders()` (patch v1.6, second window in v1.8)
+runs every 5 minutes by cron and picks every booking whose class starts in
+50–60 minutes (the hour reminder) or in 20–30 minutes (the half-hour one), each
+once. A class on a round time gets them exactly 60 and 30 minutes before.
+Someone who booked in the last 15 minutes is skipped, so a booking made inside
+the last hour gets only the half-hour one, or none. Check it with
+`select * from cron.job_run_details order by start_time desc limit 5;` and
+`select count(push_reminded_at) hour, count(push_reminded_30_at) half from bookings;`.
+After changing the function file, deploy it before running a patch that
+relies on it (v1.8: an older function still delivers the half-hour reminder,
+but with the "in an hour" wording).
 
 Native (the store app): APNs and FCM secrets — see `NATIVE_GUIDE.md`.
 

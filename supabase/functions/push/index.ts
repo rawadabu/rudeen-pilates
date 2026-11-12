@@ -1,6 +1,7 @@
 // Supabase Edge Function `push`: delivers every notification the app sends —
 // to admins (new booking / cancellation / purchase request) and to clients
-// (rows of `notifications`, and the reminder an hour before class) — over
+// (rows of `notifications`, and the reminders an hour and half an hour before
+// class) — over
 // three transports:
 //   web   Web Push / VAPID          (browser, installed PWA)
 //   apns  Apple Push (HTTP/2 + JWT) (the iOS app)
@@ -49,6 +50,7 @@ const T: Record<Lang, Record<string, string> & { days: string[] }> = {
     nRemoved: 'הוסרתם מהשיעור', nRemovedRefund: 'השיעור הוחזר למנוי', nRemovedNoRefund: 'השיעור לא הוחזר למנוי',
     nClassMoved: 'השיעור הוזז', nClassMovedBody: 'עכשיו {d} בשעה {t} (במקום {was})',
     reminderTitle: 'תזכורת: שיעור בעוד שעה ⏰', reminderBody: 'היום בשעה {t} · {label}',
+    reminder30Title: 'תזכורת: שיעור בעוד חצי שעה ⏰',
   },
   ar: {
     days: ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'],
@@ -62,6 +64,7 @@ const T: Record<Lang, Record<string, string> & { days: string[] }> = {
     nRemoved: 'انشطبتوا من الحصة', nRemovedRefund: 'الحصة رجعت للاشتراك', nRemovedNoRefund: 'الحصة ما رجعت للاشتراك',
     nClassMoved: 'تغيّر موعد الحصة', nClassMovedBody: 'هلّق {d} الساعة {t} (بدل {was})',
     reminderTitle: 'تذكير: الحصة بعد ساعة ⏰', reminderBody: 'اليوم الساعة {t} · {label}',
+    reminder30Title: 'تذكير: الحصة بعد نص ساعة ⏰',
   },
 }
 
@@ -310,7 +313,7 @@ Deno.serve(async (req) => {
   if (missing.length) return json({ error: 'missing_secrets', missing }, 500)
   if (req.headers.get('x-webhook-secret') !== Deno.env.get('WEBHOOK_SECRET')) return json({ error: 'forbidden' }, 403)
 
-  let body: Record<string, string | boolean | undefined>
+  let body: Record<string, string | boolean | number | undefined>
   try {
     body = await req.json()
   } catch {
@@ -366,8 +369,9 @@ Deno.serve(async (req) => {
     }))
   }
 
-  // v1.6: about an hour before class, to the client who booked it
-  // (send_class_reminders in the database decides who and when)
+  // v1.6: about an hour before class, to the client who booked it; v1.8: and
+  // again half an hour before (`minutes: 30`). send_class_reminders in the
+  // database decides who and when.
   if (event === 'class_reminder') {
     const id = body.booking_id as string | undefined
     if (!id) return json({ error: 'missing booking_id' }, 400)
@@ -376,10 +380,13 @@ Deno.serve(async (req) => {
     if (!b || !b.user_id || b.status !== 'booked') return json({ ok: true, skipped: 'not_booked' })
     const { data: cls } = await db.from('classes').select('start_time, label, status').eq('id', b.class_id).single()
     if (!cls || cls.status !== 'open') return json({ ok: true, skipped: 'class_not_open' })
+    // The half-hour one has its own tag: a notification sent under the tag of
+    // the hour one would replace it without a sound, and it has to be noticed.
+    const half = Number(body.minutes) === 30
     return json(await deliver(db, await userSubs(db, b.user_id), (lang) => ({
-      title: T[lang].reminderTitle,
+      title: half ? T[lang].reminder30Title : T[lang].reminderTitle,
       body: T[lang].reminderBody.replace('{t}', hhmm(cls.start_time)).replace('{label}', cls.label || T[lang].classDefault),
-      url: '/#/', tag: `reminder-${id}`,
+      url: '/#/', tag: half ? `reminder30-${id}` : `reminder-${id}`,
     })))
   }
 
