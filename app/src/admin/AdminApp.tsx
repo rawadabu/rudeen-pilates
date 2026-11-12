@@ -1125,7 +1125,13 @@ function ClientsTab({
 }) {
   const pending = requests.filter((r) => r.status === 'pending')
   const [q, setQ] = useState('')
+  // v1.9: who has notifications on. Known only once the database has the
+  // patch (push_devices); without it there is no bell and no count.
+  const [offOnly, setOffOnly] = useState(false)
+  const members = clients.filter((c) => !c.is_admin && c.push_devices != null)
+  const pushOff = members.filter((c) => !c.push_devices)
   const list = clients.filter((c) => {
+    if (offOnly && !pushOff.includes(c)) return false
     const s = q.trim()
     if (!s) return true
     return (c.full_name ?? '').includes(s) || c.phone.includes(s.replace(/[\s-]/g, ''))
@@ -1178,6 +1184,26 @@ function ClientsTab({
         placeholder={t.clientsSearch}
         style={{ ...inputStyle, marginBottom: 12 }}
       />
+      {members.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+          <Icon name="notifications_active" size={17} color={C.ok} />
+          <div style={{ flex: 1, fontSize: 12.5, color: C.muted }}>
+            {t.clientsPush.replace('{n}', iso(members.length - pushOff.length)).replace('{m}', iso(members.length))}
+          </div>
+          {(pushOff.length > 0 || offOnly) && (
+            <button
+              onClick={() => setOffOnly(!offOnly)}
+              aria-pressed={offOnly}
+              style={{
+                border: '1px solid ' + (offOnly ? C.warn : C.line), background: offOnly ? C.warnSoft : C.card,
+                color: offOnly ? C.warn : C.ink, borderRadius: 999, padding: '7px 12px', fontSize: 12.5, cursor: 'pointer', whiteSpace: 'nowrap',
+              }}
+            >
+              {offOnly ? t.clientsPushAll : t.clientsPushOffOnly.replace('{n}', iso(pushOff.length))}
+            </button>
+          )}
+        </div>
+      )}
       {list.length === 0 ? (
         <Empty text={t.clientsEmpty} />
       ) : (
@@ -1200,6 +1226,16 @@ function ClientsTab({
               </div>
             </div>
             <HealthMarker lang={lang} flags={c.health_flags} formAt={c.health_form_at} />
+            {!c.is_admin && c.push_devices != null && (
+              <span
+                role="img"
+                aria-label={c.push_devices ? t.pushOnLabel : t.pushOffLabel}
+                title={c.push_devices ? t.pushOnLabel : t.pushOffLabel}
+                style={{ display: 'flex' }}
+              >
+                <Icon name={c.push_devices ? 'notifications_active' : 'notifications_off'} size={19} color={c.push_devices ? C.ok : C.warn} />
+              </span>
+            )}
             <div
               style={{
                 background: c.active_remaining > 0 ? C.accentSoft : C.bg,

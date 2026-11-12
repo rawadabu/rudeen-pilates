@@ -139,12 +139,14 @@ const realApi: Api = {
   },
 
   async fetchClients() {
-    const { data, error } = await supabase!
-      .from('client_directory')
-      .select('id, full_name, phone, is_admin, active_remaining, next_expiry, health_flags, health_form_at')
-      .order('full_name', { nullsFirst: false })
+    const cols = 'id, full_name, phone, is_admin, active_remaining, next_expiry, health_flags, health_form_at'
+    const list = (c: string) => supabase!.from('client_directory').select(c).order('full_name', { nullsFirst: false })
+    let { data, error } = await list(cols + ', push_devices')
+    // 42703 = no such column: the database has not had patch v1.9 yet. The
+    // list still loads, just without the bells.
+    if (error?.code === '42703') ({ data, error } = await list(cols))
     if (error) throw error
-    return (data ?? []) as Client[]
+    return (data ?? []) as unknown as Client[]
   },
 
   async fetchClientPacks(userId) {

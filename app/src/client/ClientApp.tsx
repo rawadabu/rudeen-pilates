@@ -2,14 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Icon } from '../components/Icon'
 import { Logo } from '../components/Logo'
 import { OtpPanel } from '../components/OtpPanel'
-import { PushCard } from '../components/PushCard'
+import { PushAskSheet, PushCard } from '../components/PushCard'
 import { Sheet } from '../components/Sheet'
 import { Empty, ErrLine, Field, PrimaryBtn, RetryBox, SectionTitle, fmtShort, inputStyle, longDate } from '../components/ui'
 import { DICT, errMsg, type Dict, type Lang } from '../i18n'
 import { api } from '../lib/api'
 import { WEEKS_AHEAD, dateOf, daysUntil, hhmm, iso, slotDateTime, toISODate } from '../lib/dates'
 import { displayPhone, normalizePhone } from '../lib/phone'
-import { currentEndpoint, forgetNativeEndpoint } from '../lib/push'
+import { canOpenSettings, currentEndpoint, forgetNativeEndpoint } from '../lib/push'
+import { pushNow, usePush } from '../lib/pushStore'
 import { C } from '../lib/theme'
 import type { AuthUser, ClassRow, HealthForm, MyBooking, Notification, Pack, Plan, Profile, PurchaseRequest, StudioInfo } from '../lib/types'
 import { HealthFormScreen, HealthView } from '../health/HealthForm'
@@ -60,6 +61,11 @@ export function ClientApp() {
   const [loginMode, setLoginMode] = useState<AuthMode>('signin')
   const [pendingClass, setPendingClass] = useState<string | null>(null)
   const [openPlan, setOpenPlan] = useState<Plan | null>(null)
+  // v1.9: are notifications on, on this device? Known from the start, so the
+  // question after a booking can be asked without waiting.
+  usePush(lang)
+  const [pushAsk, setPushAsk] = useState(false)
+  const closePushAsk = useCallback(() => setPushAsk(false), [])
 
   const fromISO = toISODate(dateOf(0, 0))
   const toISO = toISODate(dateOf(WEEKS_AHEAD - 1, 6))
@@ -217,6 +223,21 @@ export function ClientApp() {
     setLoginOpen(true)
   }
 
+  // v1.9: the moment a reminder matters is right after booking. Ask then —
+  // while this device has notifications off, or refused and there is a button
+  // to the phone's Settings — and not more than once a day. True when the
+  // sheet opens: it says "booked" itself, so the toast (which would sit on
+  // top of its button) is skipped.
+  const askPushAfterBooking = (): boolean => {
+    const s = pushNow().state
+    if (!(s === 'off' || (s === 'denied' && canOpenSettings()))) return false
+    const last = Number(localStorage.getItem('push_ask_at') || 0)
+    if (Date.now() - last < 20 * 3600_000) return false
+    localStorage.setItem('push_ask_at', String(Date.now()))
+    setPushAsk(true)
+    return true
+  }
+
   const book = async (c: ClassRow) => {
     if (!user) {
       setPendingClass(c.id)
@@ -234,7 +255,7 @@ export function ClientApp() {
     const r = await api.bookClass(c.id)
     setBusyId(null)
     if (!r.ok) return say(errMsg(t, r.error), 'bad')
-    say(t.bookedOk)
+    if (!askPushAfterBooking()) say(t.bookedOk)
     loadPublic()
     loadMine()
   }
@@ -297,7 +318,7 @@ export function ClientApp() {
       if (c) {
         const r = await api.bookClass(c.id)
         if (!r.ok) say(errMsg(t, r.error), 'bad')
-        else say(t.bookedOk)
+        else if (!askPushAfterBooking()) say(t.bookedOk)
         loadPublic()
         loadMine()
       }
@@ -430,6 +451,10 @@ export function ClientApp() {
       )}
 
       <div style={{ maxWidth: 560, margin: '0 auto', padding: '14px 16px 104px' }}>
+        {/* v1.9: first thing on the home screen while this device has notifications off */}
+        {screen === 'home' && user && (
+          <PushCard t={t} lang={lang} title={t.clientNotifTitle} hint={t.clientNotifHint} say={say} />
+        )}
         {screen === 'home' && (
           user ? (
             <HomeTab
@@ -572,6 +597,8 @@ export function ClientApp() {
       />
 
       {loginSheet}
+
+      <PushAskSheet t={t} lang={lang} open={pushAsk} onClose={closePushAsk} say={say} done={t.bookedOk} />
 
       <Sheet closeLabel={t.close} open={!!openPlan} onClose={() => setOpenPlan(null)} title={openPlan?.name ?? ''}>
         {openPlan && (

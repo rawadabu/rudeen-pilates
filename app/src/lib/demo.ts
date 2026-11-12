@@ -393,6 +393,8 @@ export const demoApi: Api = {
         next_expiry: active.sort((a, b) => a.until.localeCompare(b.until))[0]?.until ?? null,
         health_flags: healthForms.get(p.id)?.flags ?? null,
         health_form_at: healthForms.get(p.id)?.submitted_at ?? null,
+        // demo: every third client never turned notifications on
+        push_devices: profiles.indexOf(p) % 3 === 2 ? 0 : 1,
       }
     })
   },

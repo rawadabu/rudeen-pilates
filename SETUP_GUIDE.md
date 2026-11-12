@@ -22,7 +22,8 @@ There is no separate instructor account.
    classes, and adds clients by hand), then `supabase_patch_v1_6.sql`
    (purchase requests switched off, and the reminder an hour before class),
    then `supabase_patch_v1_7.sql` (cancel a whole day), then
-   `supabase_patch_v1_8.sql` (a second reminder, half an hour before class).
+   `supabase_patch_v1_8.sql` (a second reminder, half an hour before class),
+   then `supabase_patch_v1_9.sql` (the admin sees who has notifications on).
    Run them once each, in that order; re-running a patch is harmless.
 3. Deploy the `admin-create-client` edge function — it is what the admin's
    **מתאמנת חדשה** button calls (creating an account needs the service role,
@@ -142,6 +143,21 @@ the dashboard route:
 7. Each person turns notifications on once, on their own phone: the card on
    the home screen / account tab. On iPhone the site must first be added to the
    Home Screen (Safari → Share → Add to Home Screen) and opened from there.
+
+Nobody can be made to allow notifications — the phone asks its owner, and
+Apple rejects an app that refuses to work without them. What the app does
+instead (v1.9):
+
+- **asks right after a booking** ("a reminder before the class?"), at most once
+  a day, while that device has them off;
+- for someone who once tapped "Don't Allow" (the iPhone never asks again):
+  an **Open Settings** button that goes to the app's page in the phone's
+  Settings, and the registration finishes by itself when they come back;
+- in the admin, **מנויים** shows a bell per client (on / off), a count, and a
+  "without notifications" filter, so the studio knows whom to ask in person.
+  On = that client allowed notifications on at least one device. It cannot
+  tell that someone later switched them off in the phone's Settings; a deleted
+  app drops out by itself on the next send.
 
 The reminders: `send_class_reminders()` (patch v1.6, second window in v1.8)
 runs every 5 minutes by cron and picks every booking whose class starts in

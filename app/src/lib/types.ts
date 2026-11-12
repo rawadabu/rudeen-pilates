@@ -126,6 +126,8 @@ export type Client = {
   next_expiry: string | null
   health_flags: string[] | null
   health_form_at: string | null
+  /** v1.9: how many devices allowed notifications; undefined on a database without the patch */
+  push_devices?: number | null
 }
 
 export type RpcResult = {

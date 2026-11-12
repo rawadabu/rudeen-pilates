@@ -11,6 +11,33 @@ export const isNative = Capacitor.isNativePlatform()
 /** 'unconfigured' = web build without VITE_VAPID_PUBLIC_KEY: nothing to offer */
 export type PushState = 'unconfigured' | 'unsupported' | 'denied' | 'off' | 'on'
 
+/** Dev server only: preview the states that otherwise need a real iPhone, e.g.
+ *  in the console: window.__pushFake = { state: 'denied', ios: true }.
+ *  import.meta.env.DEV is false in a production build, so none of it ships. */
+type Fake = { state: PushState; ios?: boolean; grant?: boolean }
+const fake = (): Fake | null =>
+  import.meta.env.DEV ? ((window as unknown as { __pushFake?: Fake }).__pushFake ?? null) : null
+
+/** Can this device jump to its own notification settings? The iPhone app only. */
+export function canOpenSettings(): boolean {
+  const f = fake()
+  if (f) return !!f.ios
+  return isNative && Capacitor.getPlatform() === 'ios'
+}
+
+/** iPhone app: opens this app's page in the phone's Settings, where
+ *  Notifications is. Once someone tapped "Don't Allow", iOS never asks again —
+ *  this is the only way back. No plugin: Capacitor hands every address that is
+ *  not the app's own to iOS (WebViewDelegationHandler → UIApplication.open),
+ *  and `app-settings:` is iOS's own address for that page. */
+export function openNotificationSettings(): void {
+  if (fake()) {
+    console.info('[push] dev preview: would open app-settings:')
+    return
+  }
+  if (canOpenSettings()) window.location.href = 'app-settings:'
+}
+
 export function pushSupported(): boolean {
   if (isNative) return true
   return !!VAPID_PUBLIC_KEY && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window
@@ -36,6 +63,8 @@ export function initNativePush(): void {
 }
 
 export async function getPushState(): Promise<PushState> {
+  const f = fake()
+  if (f) return f.state
   if (isNative) {
     const p = await PushNotifications.checkPermissions()
     if (p.receive === 'denied') return 'denied'
@@ -60,6 +89,11 @@ function urlBase64ToUint8Array(base64: string): Uint8Array {
 
 /** Asks permission and registers. Returns null if refused/unsupported. */
 export async function enablePush(): Promise<PushSub | null> {
+  const f = fake()
+  if (f) {
+    f.state = f.grant ? 'on' : 'denied'
+    return f.grant ? { endpoint: 'apns:dev-preview', kind: 'apns', p256dh: null, auth: null } : null
+  }
   if (isNative) {
     const perm = await PushNotifications.requestPermissions()
     if (perm.receive !== 'granted') return null
