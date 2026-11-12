@@ -582,7 +582,7 @@ export const demoApi: Api = {
   },
 
   // ---------- shop ----------
-  async fetchStudioInfo() { return { cancel_cutoff_hours: CUTOFF_HOURS, whatsapp_phone: studioWhatsapp } },
+  async fetchStudioInfo() { return { cancel_cutoff_hours: CUTOFF_HOURS, whatsapp_phone: studioWhatsapp, purchase_requests_enabled: false } },
 
   async fetchPlans() {
     seed()

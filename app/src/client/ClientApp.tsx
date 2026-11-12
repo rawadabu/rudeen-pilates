@@ -255,6 +255,11 @@ export function ClientApp() {
     loadMine()
   }
 
+  // v1.6: clients may ask for a plan in the app only when the studio allows it.
+  // It is off: people asked, got the subscription and did not pay, so the
+  // studio opens every subscription itself once it has the money.
+  const canRequest = info?.purchase_requests_enabled === true
+
   const requestPlan = async (plan: Plan, note: string | null) => {
     if (!user) {
       openLogin('signin')
@@ -522,6 +527,7 @@ export function ClientApp() {
               t={t}
               plans={plans.filter((p) => p.active)}
               requests={requests}
+              canRequest={canRequest}
               busyId={busyId}
               onOpen={setOpenPlan}
               onCancelRequest={cancelRequest}
@@ -573,6 +579,7 @@ export function ClientApp() {
             t={t}
             plan={openPlan}
             info={info}
+            canRequest={canRequest}
             alreadyPending={requests.some((r) => r.plan_id === openPlan.id && r.status === 'pending')}
             busy={busyId === openPlan.id}
             onRequest={async (note) => {
@@ -813,21 +820,23 @@ function BackBar({ t, title, onBack }: { t: Dict; title: string; onBack: () => v
 // ---------------------------------------------------------------- shop
 
 function ShopTab({
-  t, plans, requests, busyId, onOpen, onCancelRequest,
+  t, plans, requests, canRequest, busyId, onOpen, onCancelRequest,
 }: {
   t: Dict
   plans: Plan[]
   requests: PurchaseRequest[]
+  canRequest: boolean
   busyId: string | null
   onOpen: (p: Plan) => void
   onCancelRequest: (r: PurchaseRequest) => void
 }) {
-  const recent = requests.slice(0, 5)
+  // with requests off, only one still waiting for an answer is worth showing
+  const recent = (canRequest ? requests : requests.filter((r) => r.status === 'pending')).slice(0, 5)
   return (
     <>
       <div style={{ padding: '4px 2px 14px' }}>
         <div style={{ fontSize: 20, fontWeight: 600, color: C.ink }}>{t.shopTitle}</div>
-        <div style={{ fontSize: 12.5, color: C.muted, lineHeight: 1.6, marginTop: 4 }}>{t.shopSub}</div>
+        <div style={{ fontSize: 12.5, color: C.muted, lineHeight: 1.6, marginTop: 4 }}>{canRequest ? t.shopSub : t.shopSubManual}</div>
       </div>
 
       {recent.length > 0 && (
@@ -915,11 +924,12 @@ function StatusChip({ t, status }: { t: Dict; status: PurchaseRequest['status'] 
 }
 
 function PlanSheet({
-  t, plan, info, alreadyPending, busy, onRequest,
+  t, plan, info, canRequest, alreadyPending, busy, onRequest,
 }: {
   t: Dict
   plan: Plan
   info: StudioInfo | null
+  canRequest: boolean
   alreadyPending: boolean
   busy: boolean
   onRequest: (note: string | null) => void
@@ -944,20 +954,26 @@ function PlanSheet({
       {plan.description && (
         <div style={{ fontSize: 13, color: C.ink, lineHeight: 1.6, marginBottom: 10 }}>{plan.description}</div>
       )}
-      <div style={{ fontSize: 12.5, color: C.muted, lineHeight: 1.6, marginBottom: 14 }}>{t.shopSub}</div>
+      <div style={{ fontSize: 12.5, color: C.muted, lineHeight: 1.6, marginBottom: 14 }}>{canRequest ? t.shopSub : t.shopSubManual}</div>
 
-      <Field label={t.requestNoteLabel + ' ' + t.optional}>
-        <input value={note} onChange={(e) => setNote(e.target.value)} style={inputStyle} />
-      </Field>
+      {/* v1.6: no request while the studio opens subscriptions itself — the
+          plan is a price, and the way to pay or to write to the studio */}
+      {canRequest && (
+        <>
+          <Field label={t.requestNoteLabel + ' ' + t.optional}>
+            <input value={note} onChange={(e) => setNote(e.target.value)} style={inputStyle} />
+          </Field>
 
-      <PrimaryBtn
-        label={busy ? t.loading : alreadyPending ? t.reqPending : t.requestBtn}
-        disabled={busy || alreadyPending}
-        onClick={() => onRequest(note.trim() || null)}
-      />
+          <PrimaryBtn
+            label={busy ? t.loading : alreadyPending ? t.reqPending : t.requestBtn}
+            disabled={busy || alreadyPending}
+            onClick={() => onRequest(note.trim() || null)}
+          />
+        </>
+      )}
 
       {(plan.payment_url || waHref) && (
-        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+        <div style={{ display: 'flex', gap: 8, marginTop: canRequest ? 10 : 0 }}>
           {plan.payment_url && (
             <a
               href={plan.payment_url}

@@ -229,6 +229,9 @@ export type PushSub = {
 export type StudioInfo = {
   cancel_cutoff_hours: number
   whatsapp_phone: string | null
+  /** v1.6: may clients ask for a plan in the app? Off (and absent before patch
+   *  v1.6 is run): the studio opens every subscription itself, after payment. */
+  purchase_requests_enabled?: boolean
 }
 
 export type Unsubscribe = () => void

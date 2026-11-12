@@ -1,6 +1,7 @@
 // Supabase Edge Function `push`: delivers every notification the app sends —
 // to admins (new booking / cancellation / purchase request) and to clients
-// (rows of `notifications`) — over three transports:
+// (rows of `notifications`, and the reminder an hour before class) — over
+// three transports:
 //   web   Web Push / VAPID          (browser, installed PWA)
 //   apns  Apple Push (HTTP/2 + JWT) (the iOS app)
 //   fcm   Firebase Cloud Messaging  (the Android app)
@@ -21,7 +22,7 @@ type Lang = 'he' | 'ar'
 type Kind = 'web' | 'apns' | 'fcm'
 type Sub = { id: string; user_id: string; endpoint: string; kind: Kind; p256dh: string | null; auth: string | null; lang: Lang }
 type Msg = { title: string; body: string; url: string; tag: string }
-type Ev = 'booking_created' | 'booking_cancelled' | 'purchase_request' | 'notification' | 'unknown'
+type Ev = 'booking_created' | 'booking_cancelled' | 'purchase_request' | 'notification' | 'class_reminder' | 'unknown'
 
 // ⚠️ REPLACE BOTH before deploying — `npx web-push generate-vapid-keys`.
 // Baked into the source on purpose: keys pasted into the dashboard's secret
@@ -29,7 +30,8 @@ type Ev = 'booking_created' | 'booking_cancelled' | 'purchase_request' | 'notifi
 // half MUST equal VITE_VAPID_PUBLIC_KEY in the frontend bundle.
 const VAPID_PUBLIC = 'REPLACE_ME_PUBLIC'
 const VAPID_PRIVATE = 'REPLACE_ME_PRIVATE'
-const CONTACT = 'mailto:studio@example.com'
+// who a push service may contact about this sender: the app's own address
+const CONTACT = 'https://rudeen-pilates.vercel.app'
 
 // ---------------------------------------------------------------- copy
 // Mirrors src/i18n.ts. Rows carry kind + data only; text is built here in the
@@ -46,6 +48,7 @@ const T: Record<Lang, Record<string, string> & { days: string[] }> = {
     nClassCancelled: 'שיעור בוטל', nClassCancelledBody: '{d} בשעה {t} · השיעור הוחזר למנוי',
     nRemoved: 'הוסרתם מהשיעור', nRemovedRefund: 'השיעור הוחזר למנוי', nRemovedNoRefund: 'השיעור לא הוחזר למנוי',
     nClassMoved: 'השיעור הוזז', nClassMovedBody: 'עכשיו {d} בשעה {t} (במקום {was})',
+    reminderTitle: 'תזכורת: שיעור בעוד שעה ⏰', reminderBody: 'היום בשעה {t} · {label}',
   },
   ar: {
     days: ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'],
@@ -58,6 +61,7 @@ const T: Record<Lang, Record<string, string> & { days: string[] }> = {
     nClassCancelled: 'انلغت حصة', nClassCancelledBody: '{d} الساعة {t} · الحصة رجعت للاشتراك',
     nRemoved: 'انشطبتوا من الحصة', nRemovedRefund: 'الحصة رجعت للاشتراك', nRemovedNoRefund: 'الحصة ما رجعت للاشتراك',
     nClassMoved: 'تغيّر موعد الحصة', nClassMovedBody: 'هلّق {d} الساعة {t} (بدل {was})',
+    reminderTitle: 'تذكير: الحصة بعد ساعة ⏰', reminderBody: 'اليوم الساعة {t} · {label}',
   },
 }
 
@@ -286,6 +290,7 @@ function resolveEvent(raw: unknown): Ev {
   // through to the celebratory "new booking" copy in the previous studio app.
   if (raw === undefined || raw === null) return 'booking_created'
   return raw === 'booking_cancelled' || raw === 'purchase_request' || raw === 'notification' || raw === 'booking_created'
+    || raw === 'class_reminder'
     ? raw as Ev : 'unknown'
 }
 
@@ -348,6 +353,23 @@ Deno.serve(async (req) => {
         default: return { title: str('title') || t.classDefault, body: str('body'), url, tag }
       }
     }))
+  }
+
+  // v1.6: about an hour before class, to the client who booked it
+  // (send_class_reminders in the database decides who and when)
+  if (event === 'class_reminder') {
+    const id = body.booking_id as string | undefined
+    if (!id) return json({ error: 'missing booking_id' }, 400)
+    const { data: b } = await db.from('bookings').select('user_id, class_id, status').eq('id', id).single()
+    // cancelled in the minute between the query and this call: say nothing
+    if (!b || !b.user_id || b.status !== 'booked') return json({ ok: true, skipped: 'not_booked' })
+    const { data: cls } = await db.from('classes').select('start_time, label, status').eq('id', b.class_id).single()
+    if (!cls || cls.status !== 'open') return json({ ok: true, skipped: 'class_not_open' })
+    return json(await deliver(db, await userSubs(db, b.user_id), (lang) => ({
+      title: T[lang].reminderTitle,
+      body: T[lang].reminderBody.replace('{t}', hhmm(cls.start_time)).replace('{label}', cls.label || T[lang].classDefault),
+      url: '/#/', tag: `reminder-${id}`,
+    })))
   }
 
   if (event === 'purchase_request') {

@@ -64,6 +64,8 @@ export const DICT = {
     // shop
     shopTitle: 'מוצרים',
     shopSub: 'בוחרים מנוי ושולחים בקשה. התשלום מול הסטודיו (ביט / מזומן), והמנוי נפתח באפליקציה מיד עם האישור.',
+    // v1.6: no request button — the studio opens the subscription after payment
+    shopSubManual: 'התשלום מול הסטודיו (ביט / מזומן). אחרי התשלום הסטודיו פותח לכם את המנוי באפליקציה.',
     shopEmpty: 'אין מוצרים זמינים כרגע',
     planSessions: '{n} שיעורים', planSessionOne: 'שיעור אחד',
     planValidity: 'בתוקף {n} חודשים', planValidityOne: 'בתוקף לחודש',
@@ -180,6 +182,7 @@ export const DICT = {
       date_in_past: 'לא ניתן להוסיף שיעור בתאריך שעבר',
       plan_not_found: 'המוצר לא זמין יותר',
       request_pending: 'כבר יש בקשה ממתינה למוצר הזה',
+      requests_disabled: 'לרכישת מנוי פונים לסטודיו',
       request_not_found: 'הבקשה לא נמצאה',
       request_not_pending: 'הבקשה כבר טופלה',
       invalid_price: 'מחיר לא תקין',
@@ -376,6 +379,7 @@ export const DICT = {
 
     shopTitle: 'المنتجات',
     shopSub: 'اختاروا اشتراك وابعتوا طلب. الدفع مع الستوديو (بيت / كاش)، والاشتراك بينفتح بالتطبيق فور الموافقة.',
+    shopSubManual: 'الدفع مع الستوديو (بيت / كاش). بعد الدفع الستوديو بيفتحلكن الاشتراك بالتطبيق.',
     shopEmpty: 'ما في منتجات متاحة حاليًا',
     planSessions: '{n} حصص', planSessionOne: 'حصة وحدة',
     planValidity: 'صالح لـ {n} شهور', planValidityOne: 'صالح لشهر',
@@ -488,6 +492,7 @@ export const DICT = {
       date_in_past: 'ما فينا نضيف حصة بتاريخ فات',
       plan_not_found: 'المنتج ما بقى متاح',
       request_pending: 'في طلب معلّق لهذا المنتج',
+      requests_disabled: 'لشراء اشتراك تواصلوا مع الستوديو',
       request_not_found: 'الطلب مش موجود',
       request_not_pending: 'الطلب صار متعالج',
       invalid_price: 'سعر غير صالح',

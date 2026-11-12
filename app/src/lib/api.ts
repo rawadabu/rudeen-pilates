@@ -260,7 +260,9 @@ const realApi: Api = {
   // ---------- shop ----------
   async fetchStudioInfo() {
     const { data, error } = await supabase!
-      .from('studio_settings').select('cancel_cutoff_hours, whatsapp_phone').single()
+      // '*', not a column list: purchase_requests_enabled exists only once patch
+      // v1.6 has been run, and naming a missing column fails the whole read
+      .from('studio_settings').select('*').single()
     if (error || !data) throw error ?? new Error('no settings')
     return data as StudioInfo
   },

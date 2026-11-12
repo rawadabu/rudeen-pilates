@@ -8,7 +8,7 @@ There is no separate instructor account.
 1. https://supabase.com → New project. Pick a region close to Israel
    (`eu-central-1` is fine). Save the database password somewhere.
 2. **Shortcut for a new, empty project:** SQL Editor → paste **all** of
-   `supabase_install_all.sql` → Run, once. It is the six files below joined
+   `supabase_install_all.sql` → Run, once. It is the seven files below joined
    in order, and the rest of this step is then already done.
 
    SQL Editor → paste **all** of `supabase_setup.sql` → Run.
@@ -19,7 +19,8 @@ There is no separate instructor account.
    (notification center), then `supabase_patch_v1_3.sql` (push devices), then
    `supabase_patch_v1_4.sql` (health questionnaire + signed declaration), then
    `supabase_patch_v1_5.sql` (the studio edits its own timetable, single
-   classes, and adds clients by hand).
+   classes, and adds clients by hand), then `supabase_patch_v1_6.sql`
+   (purchase requests switched off, and the reminder an hour before class).
    Run them once each, in that order; re-running a patch is harmless.
 3. Deploy the `admin-create-client` edge function — it is what the admin's
    **מתאמנת חדשה** button calls (creating an account needs the service role,
@@ -107,24 +108,42 @@ studio should open the link in Safari and **Add to Home Screen**.
 ## 6. Optional — push notifications (admin and clients)
 
 One edge function, `supabase/functions/push`, delivers everything: new
-booking / cancellation / purchase request to the admins, and every row of
-`notifications` (pack opened, request approved, class cancelled, announcements)
-to the clients — over web push, APNs and FCM.
+booking / cancellation / purchase request to the admins; to the clients, every
+row of `notifications` (pack opened, class cancelled or moved, announcements)
+and a **reminder about an hour before each class they booked** — over web
+push, APNs and FCM.
 
-Web (site / installed PWA):
-```bash
-npx web-push generate-vapid-keys
-```
-1. Paste the pair into `supabase/functions/push/index.ts` (`VAPID_PUBLIC` /
-   `VAPID_PRIVATE`) — baked into the source on purpose; keys pasted into the
-   dashboard secret editor came back corrupted and every push returned 403.
-2. Put the **public** half in `.env.local` as `VITE_VAPID_PUBLIC_KEY` and in
-   Vercel. Public and private must be halves of the same pair.
-3. `npx supabase functions deploy push`, add a `WEBHOOK_SECRET` function
-   secret (any long random string), run `supabase_push_setup.sql` with the
-   three placeholders filled in.
-4. `curl -X POST https://<ref>.supabase.co/functions/v1/push -H 'x-webhook-secret: <secret>' -H 'Content-Type: application/json' -d '{"ping":true}'`
-   → `{"ok":true,"transports":{...}}` tells you which transports are live.
+Web (site / installed PWA). There is no CLI on the studio's Mac, so this is
+the dashboard route:
+
+1. Make a VAPID key pair (`npx web-push generate-vapid-keys`) and paste the two
+   halves into the function source (`VAPID_PUBLIC` / `VAPID_PRIVATE`) — in the
+   copy you paste into the dashboard, never in the repository. Baked into the
+   source on purpose: keys pasted into the dashboard secret editor came back
+   corrupted and every push returned 403.
+2. Supabase → Edge Functions → **Deploy a new function → Via Editor**. Name it
+   exactly `push` (the name becomes the address and cannot be changed later),
+   paste the whole file, deploy.
+3. On the function's **Details** tab turn **Verify JWT** off. The database
+   calls it with the webhook secret only, and the function checks that itself.
+4. Edge Functions → **Secrets** → add `WEBHOOK_SECRET` = any long random
+   string.
+5. SQL Editor → run `supabase_push_setup.sql` with its two placeholders filled
+   in (the project reference and the same secret). Its last statement pings the
+   function; a few seconds later
+   `select status_code, content::text from net._http_response order by created desc limit 1;`
+   should show 200 and `{"ok":true,"transports":{"web":"ok",...}}`
+   (401 = Verify JWT still on, 403 = secrets differ, 404 = wrong function name).
+6. Put the **public** half in `.env.local` as `VITE_VAPID_PUBLIC_KEY` and in
+   Vercel, then redeploy the site. Public and private must be halves of the
+   same pair. Until this is set the "turn on notifications" card stays hidden.
+7. Each person turns notifications on once, on their own phone: the card on
+   the home screen / account tab. On iPhone the site must first be added to the
+   Home Screen (Safari → Share → Add to Home Screen) and opened from there.
+
+The reminder: `send_class_reminders()` (patch v1.6) runs every 5 minutes by
+cron and picks every booking whose class starts in 50–60 minutes, once. Check
+it with `select * from cron.job_run_details order by start_time desc limit 5;`.
 
 Native (the store app): APNs and FCM secrets — see `NATIVE_GUIDE.md`.
 
@@ -132,6 +151,10 @@ Native (the store app): APNs and FCM secrets — see `NATIVE_GUIDE.md`.
 
 - **Client pays** → admin opens **מנויים**, taps them, picks a package
   (300 ₪ → 8 sessions is a preset) → the credits appear in their app instantly.
+  This is the only way a subscription opens (patch v1.6): clients see the
+  plans and prices but can no longer send a purchase request — people asked,
+  got the subscription and did not pay. To allow requests again:
+  `update public.studio_settings set purchase_requests_enabled = true;`
 - **Client books** a class from the schedule — picks a day, then a time; one
   tap, one credit.
 - **Timetable** → לוח → **לוח שבועי קבוע**: add, change or remove the weekly
