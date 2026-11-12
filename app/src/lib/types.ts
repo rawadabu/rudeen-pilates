@@ -153,6 +153,9 @@ export type RpcResult = {
   removed?: number
   updated?: number
   kept_booked?: number
+  /** admin_cancel_day: classes cancelled, and bookings handed back with them */
+  classes?: number
+  bookings?: number
 }
 
 /** One standing weekly slot (class_template). weekday 0 = Sunday. */
@@ -273,6 +276,8 @@ export interface Api {
   /** Book an existing client into a class, spending a credit from her pack */
   bookClient(classId: string, userId: string): Promise<RpcResult>
   cancelClass(classId: string): Promise<RpcResult>
+  /** Cancel every class of that day that has not started yet; everyone booked gets the session back and a notice */
+  cancelDay(dateISO: string): Promise<RpcResult>
   adminCancelBooking(bookingId: string, refund: boolean): Promise<RpcResult>
   bookGuest(classId: string, name: string, phone: string | null, note: string | null): Promise<RpcResult>
   setAttendance(bookingId: string, status: 'booked' | 'attended' | 'no_show'): Promise<RpcResult>

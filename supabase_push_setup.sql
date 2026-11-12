@@ -49,6 +49,12 @@ begin
     if tg_op = 'INSERT' then
       v_body := jsonb_build_object('event', 'booking_created', 'booking_id', new.id);
     elsif new.status = 'cancelled' and old.status <> 'cancelled' then
+      -- v1.7: the booking went because its class was cancelled. The trainer did
+      -- that herself; a day with 30 bookings used to buzz her phone 30 times
+      -- with "the place is free again", which was not even true.
+      if exists (select 1 from public.classes c where c.id = new.class_id and c.status <> 'open') then
+        return new;
+      end if;
       v_body := jsonb_build_object('event', 'booking_cancelled', 'booking_id', new.id);
     else
       return new;   -- attendance marking, reminder flags: not events

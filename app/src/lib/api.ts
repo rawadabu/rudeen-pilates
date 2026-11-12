@@ -227,6 +227,12 @@ const realApi: Api = {
     return data as RpcResult
   },
 
+  async cancelDay(dateISO) {
+    const { data, error } = await supabase!.rpc('admin_cancel_day', { p_date: dateISO })
+    if (error) return { ok: false, error: 'network' }
+    return data as RpcResult
+  },
+
   async adminCancelBooking(bookingId, refund) {
     const { data, error } = await supabase!.rpc('admin_cancel_booking', {
       p_booking_id: bookingId, p_refund: refund,

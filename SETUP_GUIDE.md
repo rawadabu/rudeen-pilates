@@ -20,7 +20,8 @@ There is no separate instructor account.
    `supabase_patch_v1_4.sql` (health questionnaire + signed declaration), then
    `supabase_patch_v1_5.sql` (the studio edits its own timetable, single
    classes, and adds clients by hand), then `supabase_patch_v1_6.sql`
-   (purchase requests switched off, and the reminder an hour before class).
+   (purchase requests switched off, and the reminder an hour before class),
+   then `supabase_patch_v1_7.sql` (cancel a whole day).
    Run them once each, in that order; re-running a patch is harmless.
 3. Deploy the `admin-create-client` edge function — it is what the admin's
    **מתאמנת חדשה** button calls (creating an account needs the service role,
@@ -162,6 +163,13 @@ Native (the store app): APNs and FCM secrets — see `NATIVE_GUIDE.md`.
   room. **One class only** (a holiday, a substitute hour) → tap it → **עריכת
   השיעור**; moving it notifies everyone booked, and the weekly schedule stops
   managing that one class.
+- **Cancelling** → one class: tap it → **ביטול השיעור** (tap twice). A whole
+  day (the trainer is ill, a holiday) → **ביטול היום** next to the day's title
+  in לוח (patch v1.7): a sheet lists what will go, one tap confirms. Either
+  way everyone booked gets the session back and a notice on their phone.
+  The whole-day button only touches classes that have not started yet, so a
+  morning that already took place stays as it was. The end date of a
+  subscription does not move.
 - **Client added by hand** → מנויים → **מתאמנת חדשה** (name + phone) → give
   her a pack → book her from a class sheet with **הוספת מתאמנת רשומה** (spends
   a credit, like the app). When she later signs in with that phone, it is the

@@ -9,7 +9,7 @@ import {
 } from '../components/ui'
 import { DICT, errMsg, type Dict, type Lang } from '../i18n'
 import { api } from '../lib/api'
-import { dateOf, hhmm, iso, toISODate, weekLabel } from '../lib/dates'
+import { dateOf, hhmm, iso, slotDateTime, toISODate, weekLabel } from '../lib/dates'
 import { displayPhone, normalizePhone } from '../lib/phone'
 import { currentEndpoint, forgetNativeEndpoint } from '../lib/push'
 import { C } from '../lib/theme'
@@ -23,6 +23,10 @@ const HEALTH_READONLY: Record<Lang, string> = {
   ar: 'عبّأته المتدربة بالتطبيق — للقراءة فقط. التحديث بس من طرفها.',
 }
 type Toast = { msg: string; kind: 'ok' | 'bad' }
+
+/** Has this class not started yet? The whole-day cancel only touches these
+ *  (the database decides the same way, on studio time). */
+const notStarted = (c: ClassRow) => slotDateTime(c.class_date, hhmm(c.start_time)) > new Date()
 
 
 export function AdminApp() {
@@ -52,6 +56,7 @@ export function AdminApp() {
   const [toast, setToast] = useState<Toast | null>(null)
 
   const [openClass, setOpenClass] = useState<string | null>(null)
+  const [cancelDayFor, setCancelDayFor] = useState<string | null>(null)
   const [grantFor, setGrantFor] = useState<Client | null>(null)
   const [addOpen, setAddOpen] = useState(false)
   const [weekOpen, setWeekOpen] = useState(false)
@@ -241,7 +246,22 @@ export function AdminApp() {
           ) : (
             days.map((d) => (
               <div key={d} style={{ marginBottom: 16 }}>
-                <SectionTitle text={longDate(t, d)} />
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <SectionTitle text={longDate(t, d)} />
+                  {/* v1.7: the trainer is ill / the studio is closed: the whole day in one go */}
+                  {classes.some((c) => c.class_date === d && notStarted(c)) && (
+                    <button
+                      onClick={() => setCancelDayFor(d)}
+                      style={{
+                        border: 'none', background: 'none', color: C.warn, fontSize: 12.5, cursor: 'pointer',
+                        padding: '8px 6px', margin: '-4px 0', display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap',
+                      }}
+                    >
+                      <Icon name="event_busy" size={16} />
+                      {t.cancelDayBtn}
+                    </button>
+                  )}
+                </div>
                 {classes
                   .filter((c) => c.class_date === d)
                   .map((c) => {
@@ -346,6 +366,25 @@ export function AdminApp() {
               loadClients()
             }}
             onClosed={() => setOpenClass(null)}
+          />
+        )}
+      </Sheet>
+
+      <Sheet closeLabel={t.close} open={!!cancelDayFor} onClose={() => setCancelDayFor(null)} title={t.cancelDayTitle}>
+        {cancelDayFor && (
+          <CancelDaySheet
+            key={cancelDayFor}
+            t={t}
+            day={cancelDayFor}
+            classes={classes.filter((c) => c.class_date === cancelDayFor)}
+            say={say}
+            onBack={() => setCancelDayFor(null)}
+            onDone={() => {
+              setCancelDayFor(null)
+              loadWeek()
+              loadRem()
+              loadClients()
+            }}
           />
         )}
       </Sheet>
@@ -949,6 +988,86 @@ function RosterSheet({
         }}
       >
         {cancelArmed ? t.cancelClassConfirm : t.cancelClassBtn}
+      </button>
+    </div>
+  )
+}
+
+/** v1.7 — cancel a whole day. Shows exactly what will go (classes that have
+ *  not started, and how many people are on them) before anything happens; the
+ *  numbers in the confirmation afterwards come from the database. */
+function CancelDaySheet({
+  t, day, classes, say, onBack, onDone,
+}: {
+  t: Dict
+  day: string
+  classes: ClassRow[]
+  say: (m: string, k?: 'ok' | 'bad') => void
+  onBack: () => void
+  onDone: () => void
+}) {
+  const [busy, setBusy] = useState(false)
+  const todo = classes.filter(notStarted)
+  const started = classes.length - todo.length
+  const booked = todo.reduce((n, c) => n + c.taken, 0)
+
+  const go = async () => {
+    setBusy(true)
+    const r = await api.cancelDay(day)
+    setBusy(false)
+    if (!r.ok) return say(errMsg(t, r.error, r), 'bad')
+    say(t.cancelDayOk.replace('{c}', iso(r.classes ?? todo.length)).replace('{n}', iso(r.bookings ?? booked)))
+    onDone()
+  }
+
+  return (
+    <div style={{ paddingBottom: 8 }}>
+      <div style={{ fontSize: 16, fontWeight: 600, color: C.ink }}>{longDate(t, day)}</div>
+      <div style={{ fontSize: 13.5, fontWeight: 600, color: C.warn, marginTop: 4 }}>
+        {t.cancelDayCount.replace('{c}', iso(todo.length)).replace('{n}', iso(booked))}
+      </div>
+
+      <div style={{ marginTop: 12, border: '1px solid ' + C.line, borderRadius: 12, background: C.card, overflow: 'hidden' }}>
+        {todo.map((c, i) => (
+          <div
+            key={c.id}
+            style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 13px', borderTop: i ? '1px solid ' + C.line : 'none' }}
+          >
+            <div style={{ fontSize: 15, fontWeight: 600, color: C.ink, minWidth: 48, fontVariantNumeric: 'tabular-nums' }}>{iso(hhmm(c.start_time))}</div>
+            <div style={{ flex: 1, minWidth: 0, fontSize: 13.5, color: C.ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {c.label || t.classDefault}
+            </div>
+            <div style={{ fontSize: 12, color: C.muted, whiteSpace: 'nowrap' }}>
+              {t.rosterCount.replace('{n}', iso(c.taken)).replace('{m}', iso(c.capacity))}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ fontSize: 12.5, color: C.muted, lineHeight: 1.6, marginTop: 12 }}>
+        {t.cancelDayNote}
+        {started > 0 && <> {t.cancelDayStarted}</>}
+      </div>
+
+      <button
+        onClick={go}
+        disabled={busy || todo.length === 0}
+        style={{
+          width: '100%', marginTop: 16, border: 'none', background: C.warn, color: '#fff', borderRadius: 12,
+          padding: 14, fontSize: 14.5, fontWeight: 600, cursor: 'pointer', opacity: busy || todo.length === 0 ? 0.6 : 1,
+        }}
+      >
+        {t.cancelDayYes}
+      </button>
+      <button
+        onClick={onBack}
+        disabled={busy}
+        style={{
+          width: '100%', marginTop: 8, border: '1px solid ' + C.line, background: C.card, color: C.ink,
+          borderRadius: 12, padding: 13, fontSize: 13.5, cursor: 'pointer',
+        }}
+      >
+        {t.cancelDayNo}
       </button>
     </div>
   )

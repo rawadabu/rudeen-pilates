@@ -542,6 +542,25 @@ export const demoApi: Api = {
     return { ok: true, refunded: n > 0 }
   },
 
+  async cancelDay(dateISO) {
+    seed()
+    const now = new Date()
+    const todo = [...classes.values()].filter((c) => c.date === dateISO && c.status === 'open' && slotDateTime(c.date, c.time) > now)
+    if (todo.length === 0) return { ok: false, error: 'no_classes_to_cancel' }
+    let n = 0
+    for (const c of todo) {
+      for (const b of bookings) {
+        if (b.classId === c.id && b.status === 'booked') {
+          b.status = 'cancelled'; b.consumesCredit = false; n++
+          if (b.userId) mkNotif(b.userId, 'class_cancelled', { class_date: c.date, start_time: c.time + ':00', label: c.label, refunded: true })
+        }
+      }
+      c.status = 'cancelled'
+    }
+    notifyChange()
+    return { ok: true, classes: todo.length, bookings: n }
+  },
+
   async adminCancelBooking(bookingId, refund) {
     seed()
     const b = bookings.find((x) => x.id === bookingId && x.status !== 'cancelled')
