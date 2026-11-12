@@ -156,16 +156,27 @@ async function sendWeb(sub: Sub, msg: Msg): Promise<'sent' | 'dead'> {
 }
 
 // ---------------------------------------------------------------- transport: apns
-let apnsJwtCache: { token: string; at: number } | null = null
-async function apnsJwt(): Promise<string> {
+// One token for every send, kept 50 minutes. The cache holds the PROMISE, not
+// the finished token: an announcement goes to every phone at once, and while
+// it held the result each of those sends found the cache still empty and
+// signed a token of its own. Apple accepts one new token per connection every
+// 20 minutes and answered the rest 429 TooManyProviderTokenUpdates, so only
+// the first phones got the message.
+let apnsJwtCache: { token: Promise<string>; at: number } | null = null
+function apnsJwt(): Promise<string> {
   if (apnsJwtCache && Date.now() - apnsJwtCache.at < 50 * 60_000) return apnsJwtCache.token
-  const pem = secret('APNS_KEY_P8')
-  const teamId = Deno.env.get('APNS_TEAM_ID')
-  const keyId = Deno.env.get('APNS_KEY_ID')
-  if (!pem || !teamId || !keyId) throw new Error('apns_not_configured')
-  const key = await crypto.subtle.importKey('pkcs8', pemToDer(pem), { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign'])
-  const token = await signJwt({ alg: 'ES256', kid: keyId }, { iss: teamId, iat: Math.floor(Date.now() / 1000) }, key, 'ES256')
-  apnsJwtCache = { token, at: Date.now() }
+  const token = (async () => {
+    const pem = secret('APNS_KEY_P8')
+    const teamId = Deno.env.get('APNS_TEAM_ID')
+    const keyId = Deno.env.get('APNS_KEY_ID')
+    if (!pem || !teamId || !keyId) throw new Error('apns_not_configured')
+    const key = await crypto.subtle.importKey('pkcs8', pemToDer(pem), { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign'])
+    return signJwt({ alg: 'ES256', kid: keyId }, { iss: teamId, iat: Math.floor(Date.now() / 1000) }, key, 'ES256')
+  })()
+  const entry = { token, at: Date.now() }
+  apnsJwtCache = entry
+  // a failure (secrets missing) is not remembered: the next send tries again
+  token.catch(() => { if (apnsJwtCache === entry) apnsJwtCache = null })
   return token
 }
 async function sendApns(sub: Sub, msg: Msg): Promise<'sent' | 'dead'> {
