@@ -38,6 +38,52 @@ Requirements on the Mac: **Xcode** (full app, then `sudo xcode-select -s
 /Applications/Xcode.app`) and **Android Studio**. Neither is installed on this
 machine right now — `xcode-select` points at the command-line tools.
 
+## Cloud builds (Codemagic): no Xcode or Android Studio needed
+
+`codemagic.yaml` at the repo root defines three workflows that run on
+Codemagic's Macs, building from the GitHub repo:
+
+- **android-test**: an APK to install on an Android phone. Needs steps 1–2 only.
+- **android-release**: a signed `.aab` for Google Play. Also needs step 3.
+- **ios**: a signed build uploaded to TestFlight. Also needs step 4.
+
+Codemagic builds whatever is on GitHub, so upload every change there first.
+
+1. codemagic.io → sign up with GitHub → **Add application** → GitHub →
+   `rudeen-pilates`. It picks up `codemagic.yaml` by itself.
+2. The app → **Environment variables** → a group named exactly **`supabase`**
+   with `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (the `sb_publishable_…`
+   key) and `VITE_PUBLIC_URL` = `https://rudeen-pilates.vercel.app`. These are
+   the public values the website already ships to every browser.
+3. **Android upload key** (once you have the Play account). Make it yourself, so
+   the passwords never leave you:
+
+   ```bash
+   keytool -genkeypair -v -keystore rudeen-upload.jks -alias rudeen -keyalg RSA -keysize 2048 -validity 10000
+   ```
+
+   Codemagic → Team settings → **Code signing identities → Android keystores**
+   → upload it with the reference name **`rudeen_upload`**, its passwords and
+   the alias `rudeen`. Keep the `.jks` and the passwords in a password manager;
+   never in the repo (`.gitignore` blocks `*.jks`). Google Play App Signing holds
+   the real signing key; this is only the upload key, which Google can reset.
+4. **iOS** (needs the Apple Developer Program):
+   1. developer.apple.com → Certificates, IDs & Profiles → **Identifiers → +** →
+      App IDs → bundle ID `com.rudeen.pilates`, tick **Push Notifications**.
+   2. App Store Connect → Apps → **+ New App**: iOS, "Rudeen Pilates", bundle ID
+      `com.rudeen.pilates`, SKU `rudeen-pilates`.
+   3. App Store Connect → Users and Access → **Integrations → App Store Connect
+      API** → generate a key with **App Manager** access. The `.p8` downloads
+      only once; note the Issuer ID and Key ID.
+   4. Codemagic → Team settings → **Integrations → Developer Portal → Manage
+      keys** → add it named **`Rudeen ASC key`** (the yaml refers to that name).
+      Codemagic then creates the certificate and provisioning profile itself.
+5. **Start new build** → pick the workflow. The APK / AAB / IPA download from
+   the build page; the iOS workflow also lands in TestFlight. Version numbers
+   come from Codemagic's build counter, so every upload is newer.
+
+Free plan: 500 macOS build minutes a month; one build here takes ~5–15.
+
 ## Accounts you need (once)
 
 | | Cost | Gives you |

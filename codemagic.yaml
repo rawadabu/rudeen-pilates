@@ -1,0 +1,102 @@
+# Codemagic: builds the store apps from this repo on Codemagic's Macs, so no
+# Xcode or Android Studio is needed locally. Setup: NATIVE_GUIDE.md →
+# "Cloud builds (Codemagic)".
+#
+# Every workflow builds the SAME web app the site runs (app/ → npm run build),
+# copies it into the native shells (npx cap sync) and compiles them. The
+# Supabase URL / publishable key come from the environment-variable group
+# `supabase` defined in Codemagic's UI — never written into the repo.
+
+definitions:
+  build_web: &build_web
+    name: Build the web app
+    script: |
+      cd app
+      npm ci
+      npm run build
+
+workflows:
+  # A phone-installable APK for testing. No keystore, no Play account needed.
+  android-test:
+    name: Android — test APK
+    instance_type: mac_mini_m2
+    max_build_duration: 30
+    environment:
+      groups:
+        - supabase
+      node: 22
+      java: 21
+    scripts:
+      - *build_web
+      - name: Copy it into the Android project
+        script: cd app && npx cap sync android
+      - name: Build the APK
+        script: |
+          cd app/android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+    artifacts:
+      - app/android/app/build/outputs/apk/debug/*.apk
+
+  # Signed release: .aab for Google Play (+ .apk). Needs the upload keystore
+  # added in Codemagic as `rudeen_upload`; build.gradle reads it from CM_* vars.
+  android-release:
+    name: Android — Google Play release
+    instance_type: mac_mini_m2
+    max_build_duration: 30
+    environment:
+      groups:
+        - supabase
+      android_signing:
+        - rudeen_upload
+      node: 22
+      java: 21
+    scripts:
+      - *build_web
+      - name: Copy it into the Android project
+        script: cd app && npx cap sync android
+      - name: Build the bundle and the APK
+        script: |
+          cd app/android
+          chmod +x gradlew
+          ./gradlew bundleRelease assembleRelease
+    artifacts:
+      - app/android/app/build/outputs/bundle/release/*.aab
+      - app/android/app/build/outputs/apk/release/*.apk
+
+  # Signed iOS build, uploaded to TestFlight. Needs the Apple Developer
+  # Program, the app created in App Store Connect, and an App Store Connect API
+  # key added in Codemagic under the name below.
+  ios:
+    name: iOS — TestFlight
+    instance_type: mac_mini_m2
+    max_build_duration: 45
+    integrations:
+      app_store_connect: Rudeen ASC key
+    environment:
+      groups:
+        - supabase
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.rudeen.pilates
+      node: 22
+      xcode: latest
+    scripts:
+      - *build_web
+      - name: Copy it into the iOS project
+        script: cd app && npx cap sync ios
+      - name: Use the signing files Codemagic fetched
+        script: xcode-project use-profiles
+      - name: Build number (every TestFlight upload must be higher)
+        script: |
+          sed -i '' "s/CURRENT_PROJECT_VERSION = [0-9]*;/CURRENT_PROJECT_VERSION = $BUILD_NUMBER;/" \
+            app/ios/App/App.xcodeproj/project.pbxproj
+      - name: Build the .ipa
+        script: xcode-project build-ipa --project "app/ios/App/App.xcodeproj" --scheme "App"
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
