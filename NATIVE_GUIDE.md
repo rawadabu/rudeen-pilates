@@ -79,8 +79,12 @@ Codemagic builds whatever is on GitHub, so upload every change there first.
       keys** → add it named **`Rudeen ASC key`** (the yaml refers to that name).
       Codemagic then creates the certificate and provisioning profile itself.
 5. **Start new build** → pick the workflow. The APK / AAB / IPA download from
-   the build page; the iOS workflow also lands in TestFlight. Version numbers
-   come from Codemagic's build counter, so every upload is newer.
+   the build page; the iOS workflow also lands in TestFlight. The build number
+   comes from Codemagic's build counter, so every upload is newer. The version
+   people see (1.0, 1.1, …) does not: once a version is live in the App Store,
+   Apple refuses new builds for it, so raise `MARKETING_VERSION` in
+   `app/ios/App/App.xcodeproj/project.pbxproj` (two lines) before the next
+   release. 1.0 = first release; 1.1 = requests off + class reminders (v1.6).
 
 Free plan: 500 macOS build minutes a month; one build here takes ~5–15.
 
