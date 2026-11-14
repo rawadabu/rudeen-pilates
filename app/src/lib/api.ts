@@ -166,6 +166,20 @@ const realApi: Api = {
     return data as RpcResult
   },
 
+  async updatePack(packId, sessions, validUntilISO, price, note) {
+    const { data, error } = await supabase!.rpc('admin_update_pack', {
+      p_pack_id: packId, p_sessions: sessions, p_valid_until: validUntilISO, p_price: price, p_note: note,
+    })
+    if (error) return { ok: false, error: 'network' }
+    return data as RpcResult
+  },
+
+  async deletePack(packId) {
+    const { data, error } = await supabase!.rpc('admin_delete_pack', { p_pack_id: packId })
+    if (error) return { ok: false, error: 'network' }
+    return data as RpcResult
+  },
+
   async addClass(dateISO, time, capacity, label, duration) {
     const { data, error } = await supabase!.rpc('admin_add_class', {
       p_date: dateISO, p_time: time, p_capacity: capacity, p_label: label, p_duration: duration ?? 55,

@@ -145,7 +145,7 @@ export type RpcResult = {
   user_id?: string
   /** overlaps_class / slots_overlap: start time of the class in the way */
   time?: string
-  /** capacity_below_booked: how many are booked */
+  /** capacity_below_booked: how many are booked; sessions_below_used / pack_in_use: how many sessions were used */
   taken?: number
   /** admin_update_class */
   moved?: boolean
@@ -266,6 +266,10 @@ export interface Api {
   fetchClients(): Promise<Client[]>
   grantPack(userId: string, sessions: number, months: number, price: number | null, note: string | null): Promise<RpcResult>
   fetchClientPacks(userId: string): Promise<Pack[]>
+  /** Correct a subscription: sessions (not below what was used), end date, price, note. The client is not notified. */
+  updatePack(packId: string, sessions: number, validUntilISO: string, price: number | null, note: string | null): Promise<RpcResult>
+  /** Remove a subscription opened by mistake — only one nobody trained on */
+  deletePack(packId: string): Promise<RpcResult>
   addClass(dateISO: string, time: string, capacity: number | null, label: string | null, duration?: number): Promise<RpcResult>
   /** Change one class: date, time, length, capacity, type. Booked clients are told when it moves. */
   updateClass(classId: string, dateISO: string, time: string, duration: number, capacity: number, label: string | null): Promise<RpcResult>

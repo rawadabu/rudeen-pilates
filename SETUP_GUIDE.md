@@ -23,7 +23,8 @@ There is no separate instructor account.
    (purchase requests switched off, and the reminder an hour before class),
    then `supabase_patch_v1_7.sql` (cancel a whole day), then
    `supabase_patch_v1_8.sql` (a second reminder, half an hour before class),
-   then `supabase_patch_v1_9.sql` (the admin sees who has notifications on).
+   then `supabase_patch_v1_9.sql` (the admin sees who has notifications on),
+   then `supabase_patch_v1_10.sql` (fix or remove a subscription).
    Run them once each, in that order; re-running a patch is harmless.
 3. Deploy the `admin-create-client` edge function — it is what the admin's
    **מתאמנת חדשה** button calls (creating an account needs the service role,
@@ -181,6 +182,15 @@ Native (the store app): APNs and FCM secrets — see `NATIVE_GUIDE.md`.
   plans and prices but can no longer send a purchase request — people asked,
   got the subscription and did not pay. To allow requests again:
   `update public.studio_settings set purchase_requests_enabled = true;`
+- **A subscription opened wrong** (price, number of sessions, end date) →
+  מנויים → the client → under **מנויים קיימים** tap the subscription → fix
+  the fields → **שמירת התיקון**. Opened by mistake → **מחיקת המנוי** (tap
+  twice). The form at the top of that sheet only ever opens a NEW
+  subscription: pressing it again to "correct" one adds another (patch
+  v1.10 added the fix/remove view because a client ended up with 18
+  sessions that way). The sessions cannot go below what the client already
+  used, and a subscription somebody trained on cannot be removed — lower
+  its sessions or shorten it instead. The client is not notified of a fix.
 - **Client books** a class from the schedule — picks a day, then a time; one
   tap, one credit.
 - **Timetable** → לוח → **לוח שבועי קבוע**: add, change or remove the weekly

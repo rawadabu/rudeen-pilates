@@ -397,6 +397,7 @@ export function AdminApp() {
             plans={plans}
             say={say}
             onHealth={() => setHealthFor({ userId: grantFor.id, name: grantFor.full_name || displayPhone(grantFor.phone) })}
+            onChanged={loadClients}
             onDone={() => {
               setGrantFor(null)
               loadClients()
@@ -1253,9 +1254,12 @@ function ClientsTab({
 }
 
 function GrantSheet({
-  t, client, plans, say, onDone, onHealth,
+  t, client, plans, say, onDone, onChanged, onHealth,
 }: {
-  t: Dict; client: Client; plans: Plan[]; say: (m: string, k?: 'ok' | 'bad') => void; onDone: () => void; onHealth: () => void
+  t: Dict; client: Client; plans: Plan[]; say: (m: string, k?: 'ok' | 'bad') => void; onDone: () => void
+  /** a subscription was corrected or removed: balances changed, the sheet stays open */
+  onChanged: () => void
+  onHealth: () => void
 }) {
   const [sessions, setSessions] = useState('8')
   const [months, setMonths] = useState('1')
@@ -1264,10 +1268,13 @@ function GrantSheet({
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [history, setHistory] = useState<Pack[]>([])
+  // v1.10: the subscription being corrected (the form above only opens NEW ones)
+  const [editing, setEditing] = useState<Pack | null>(null)
 
-  useEffect(() => {
+  const loadHistory = useCallback(() => {
     api.fetchClientPacks(client.id).then(setHistory).catch(() => setHistory([]))
   }, [client.id])
+  useEffect(loadHistory, [loadHistory])
 
   const save = async () => {
     const s = Number(sessions)
@@ -1281,6 +1288,24 @@ function GrantSheet({
     if (!r.ok) return setErr(errMsg(t, r.error))
     say(t.grantOk)
     onDone()
+  }
+
+  if (editing) {
+    return (
+      <PackEdit
+        key={editing.id}
+        t={t}
+        who={client.full_name || displayPhone(client.phone)}
+        pack={editing}
+        say={say}
+        onBack={() => setEditing(null)}
+        onChanged={() => {
+          setEditing(null)
+          loadHistory()
+          onChanged()
+        }}
+      />
+    )
   }
 
   return (
@@ -1301,6 +1326,8 @@ function GrantSheet({
         <Icon name="chevron_left" size={18} color={C.muted} />
       </button>
 
+      {/* v1.10: say what this form does — it opens one more subscription, it does not change an existing one */}
+      <SectionTitle text={t.grantNew} />
       <div style={{ fontSize: 12, color: C.muted, marginBottom: 6 }}>{t.grantPresets}</div>
       <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
         {plans.filter((p) => p.active).map((p) => {
@@ -1350,12 +1377,15 @@ function GrantSheet({
       {history.length > 0 && (
         <div style={{ marginTop: 20 }}>
           <SectionTitle text={t.packHistory} />
+          <div style={{ fontSize: 12, color: C.muted, margin: '-2px 2px 8px' }}>{t.packTapHint}</div>
           {history.map((p) => (
-            <div
+            <button
               key={p.id}
+              onClick={() => setEditing(p)}
               style={{
+                width: '100%', textAlign: 'start', background: C.card, cursor: 'pointer',
                 display: 'flex', alignItems: 'center', gap: 8, border: '1px solid ' + C.line,
-                borderRadius: 12, padding: '10px 12px', marginBottom: 6,
+                borderRadius: 12, padding: '12px 12px', marginBottom: 6,
               }}
             >
               <div style={{ flex: 1, fontSize: 12.5, color: p.is_active ? C.ink : C.muted }}>
@@ -1365,9 +1395,113 @@ function GrantSheet({
                 {iso(p.sessions_total)}
                 {p.price_ils != null && ' · ' + iso(p.price_ils) + ' ₪'}
               </div>
-            </div>
+              <Icon name="edit" size={17} color={C.muted} />
+            </button>
           ))}
         </div>
+      )}
+    </div>
+  )
+}
+
+/** v1.10 — correct a subscription or remove one opened by mistake. The
+ *  number of sessions cannot go below what the client already used, and a
+ *  subscription somebody trained on cannot be removed (the database refuses
+ *  both as well). The client is not told about a correction. */
+function PackEdit({
+  t, who, pack, say, onBack, onChanged,
+}: {
+  t: Dict; who: string; pack: Pack; say: (m: string, k?: 'ok' | 'bad') => void; onBack: () => void; onChanged: () => void
+}) {
+  const used = pack.sessions_total - pack.remaining
+  const [sessions, setSessions] = useState(String(pack.sessions_total))
+  const [until, setUntil] = useState(pack.valid_until)
+  const [price, setPrice] = useState(pack.price_ils != null ? String(pack.price_ils) : '')
+  const [note, setNote] = useState(pack.note ?? '')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const [armed, setArmed] = useState(false)
+
+  const save = async () => {
+    const s = Number(sessions)
+    if (!Number.isInteger(s) || s < 1 || s > 60) return setErr(t.errors.invalid_sessions)
+    if (s < used) return setErr(errMsg(t, 'sessions_below_used', { taken: used }))
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(until) || until < pack.valid_from) return setErr(t.errors.invalid_date)
+    setErr(null)
+    setBusy(true)
+    const r = await api.updatePack(pack.id, s, until, price.trim() ? Number(price) : null, note.trim() || null)
+    setBusy(false)
+    if (!r.ok) return setErr(errMsg(t, r.error, r))
+    say(t.packSaved)
+    onChanged()
+  }
+
+  const remove = async () => {
+    if (!armed) {
+      setArmed(true)
+      window.setTimeout(() => setArmed(false), 5000)
+      return
+    }
+    setBusy(true)
+    const r = await api.deletePack(pack.id)
+    setBusy(false)
+    if (!r.ok) return setErr(errMsg(t, r.error, r))
+    say(t.packDeleted)
+    onChanged()
+  }
+
+  return (
+    <div style={{ paddingBottom: 8 }}>
+      <button
+        onClick={onBack}
+        style={{ border: 'none', background: 'none', color: C.muted, cursor: 'pointer', padding: '4px 0 10px', fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+      >
+        <Icon name="chevron_right" size={18} />
+        {t.back}
+      </button>
+      <div style={{ fontSize: 16, fontWeight: 600, color: C.ink }}>{t.packEditTitle}</div>
+      <div style={{ fontSize: 13, color: C.muted, margin: '2px 0 14px' }}>
+        {who} · {t.packUsed.replace('{u}', iso(used)).replace('{n}', iso(pack.sessions_total))}
+      </div>
+
+      <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ flex: 1 }}>
+          <Field label={t.grantSessions}>
+            <input value={sessions} onChange={(e) => setSessions(e.target.value.replace(/\D/g, ''))} inputMode="numeric" dir="ltr" style={inputStyle} />
+          </Field>
+        </div>
+        <div style={{ flex: 1 }}>
+          <Field label={t.packUntil}>
+            <input type="date" value={until} min={pack.valid_from} onChange={(e) => setUntil(e.target.value)} dir="ltr" style={inputStyle} />
+          </Field>
+        </div>
+      </div>
+      <Field label={t.grantPrice + ' ' + t.optional}>
+        <input value={price} onChange={(e) => setPrice(e.target.value.replace(/\D/g, ''))} inputMode="numeric" dir="ltr" style={inputStyle} />
+      </Field>
+      <Field label={t.grantNote + ' ' + t.optional}>
+        <input value={note} onChange={(e) => setNote(e.target.value)} style={inputStyle} />
+      </Field>
+      {err && <ErrLine text={err} />}
+      <PrimaryBtn label={busy ? t.loading : t.packSave} disabled={busy} onClick={save} />
+      <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5, marginTop: 8, textAlign: 'center' }}>{t.packQuiet}</div>
+
+      {used > 0 ? (
+        <div style={{ fontSize: 12.5, color: C.muted, lineHeight: 1.6, marginTop: 18, border: '1px dashed ' + C.line, borderRadius: 12, padding: 12 }}>
+          {t.packDeleteUsed}
+        </div>
+      ) : (
+        <button
+          onClick={remove}
+          disabled={busy}
+          style={{
+            width: '100%', marginTop: 18, border: '1px solid ' + C.warn,
+            background: armed ? C.warnSoft : 'none', color: C.warn, borderRadius: 12,
+            padding: 12, fontSize: 13, cursor: 'pointer', fontWeight: armed ? 600 : 400,
+          }}
+        >
+          {armed ? t.packDeleteConfirm : t.packDelete}
+        </button>
       )}
     </div>
   )

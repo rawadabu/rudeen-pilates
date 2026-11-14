@@ -418,6 +418,31 @@ export const demoApi: Api = {
     return { ok: true }
   },
 
+  async updatePack(packId, sessions, validUntilISO, price, note) {
+    seed()
+    const p = packs.find((x) => x.id === packId)
+    if (!p) return { ok: false, error: 'pack_not_found' }
+    if (!Number.isInteger(sessions) || sessions < 1 || sessions > 60) return { ok: false, error: 'invalid_sessions' }
+    if (sessions < spent(p.id)) return { ok: false, error: 'sessions_below_used', taken: spent(p.id) }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(validUntilISO) || validUntilISO < p.from) return { ok: false, error: 'invalid_date' }
+    if (price != null && (price < 0 || price > 99999)) return { ok: false, error: 'invalid_price' }
+    p.total = sessions; p.until = validUntilISO; p.price = price; p.note = note?.trim() || null
+    notifyChange()
+    return { ok: true, pack_id: p.id }
+  },
+
+  async deletePack(packId) {
+    seed()
+    const i = packs.findIndex((x) => x.id === packId)
+    if (i < 0) return { ok: false, error: 'pack_not_found' }
+    const live = bookings.filter((b) => b.packId === packId && (b.consumesCredit || b.status !== 'cancelled')).length
+    if (live > 0) return { ok: false, error: 'pack_in_use', taken: live }
+    for (const b of bookings) if (b.packId === packId) b.packId = null
+    packs.splice(i, 1)
+    notifyChange()
+    return { ok: true }
+  },
+
   async addClass(dateISO, time, capacity, label, duration) {
     seed()
     const key = `${dateISO}|${time}`
