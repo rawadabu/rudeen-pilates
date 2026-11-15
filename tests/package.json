@@ -1,0 +1,17 @@
+{
+  "name": "rudeen-pilates-tests",
+  "private": true,
+  "type": "module",
+  "description": "Checks for the database SQL, the push function and the app screens. See README.md.",
+  "scripts": {
+    "test": "npm run test:db && npm run test:fn && npm run test:app && npm run test:ui",
+    "test:db": "node --test \"db/*.test.mjs\"",
+    "test:fn": "node --test \"push-function/*.test.mjs\"",
+    "test:app": "npm --prefix ../app run typecheck && npm --prefix ../app run build",
+    "test:ui": "node --test --test-concurrency=1 \"ui/*.test.mjs\"",
+    "live": "node live/check.mjs"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.3.14"
+  }
+}

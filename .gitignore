@@ -20,3 +20,6 @@ GoogleService-Info.plist
 # Supabase CLI local state
 supabase/.temp/
 supabase/.branches/
+
+# screenshots from the screen tests
+tests/.shots/
