@@ -24,7 +24,8 @@ There is no separate instructor account.
    then `supabase_patch_v1_7.sql` (cancel a whole day), then
    `supabase_patch_v1_8.sql` (a second reminder, half an hour before class),
    then `supabase_patch_v1_9.sql` (the admin sees who has notifications on),
-   then `supabase_patch_v1_10.sql` (fix or remove a subscription).
+   then `supabase_patch_v1_10.sql` (fix or remove a subscription), then
+   `supabase_patch_v1_11.sql` (older functions closed to visitors).
    Run them once each, in that order; re-running a patch is harmless.
 3. Deploy the `admin-create-client` edge function — it is what the admin's
    **מתאמנת חדשה** button calls (creating an account needs the service role,

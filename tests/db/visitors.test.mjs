@@ -1,29 +1,21 @@
 // What somebody who is NOT signed in can reach in the database.
 //
-// Functions written before v1.6 say `revoke execute … from anon`. That does
-// not close them: Postgres also grants every function to PUBLIC, which
-// includes visitors. They are safe only because each one checks the caller
-// itself. Functions from v1.6 on say `revoke … from public, anon` and are
-// closed one level earlier.
+// `revoke execute … from anon` does not close a function: Postgres also grants
+// every function to PUBLIC, and a visitor is part of PUBLIC. Functions must end
+// with `revoke execute … from public, anon`. Patch v1.11 did that for the
+// older ones, which until then were reachable and only refused the caller
+// from inside (tests/db/hardening.test.mjs keeps the before / after).
 //
-// This test pins both facts: (1) the list of functions a visitor can call
-// does not grow by accident — a new function must be closed; (2) every
-// function on that list refuses a signed-out caller and changes nothing.
+// This pins what is left: (1) the list of functions a visitor can call does
+// not grow by accident — a new function must be closed; (2) every function on
+// that list gives a signed-out caller nothing and changes nothing.
 import { test } from 'node:test'
 import { fresh } from '../lib/harness.mjs'
 import { checks } from '../lib/checks.mjs'
 
-// Reachable by a visitor today, and why that is acceptable.
+// Reachable by a visitor, and why that is right.
 const SELF_GUARDED = {
-  // admin actions: answer not_admin
-  admin_add_class: 'not_admin', admin_book_client: 'not_admin', admin_book_guest: 'not_admin', admin_cancel_booking: 'not_admin',
-  admin_cancel_class: 'not_admin', admin_decide_purchase: 'not_admin', admin_grant_pack: 'not_admin', admin_save_template: 'not_admin',
-  admin_set_attendance: 'not_admin', admin_update_class: 'not_admin',
-  // client actions: answer not_authenticated (or find nothing that belongs to "nobody")
-  book_class: 'not_authenticated', cancel_my_booking: 'not_authenticated', delete_my_account: 'not_authenticated', request_purchase: 'not_authenticated',
-  save_push_subscription: 'not_authenticated', submit_health_form: 'not_authenticated', cancel_purchase_request: 'not_found_or_not_yours',
-  delete_push_subscription: null,   // answers ok, deletes only rows that belong to the caller: none
-  // harmless by nature
+  // the row-level rules and the views call these, so every role that reads a table needs them
   is_admin: 'value', studio_now: 'value', studio_today: 'value',
   // trigger functions: Postgres refuses a direct call
   handle_new_user: 'trigger', push_webhook: 'trigger',
@@ -43,7 +35,7 @@ test('visitors: what a signed-out caller can reach, and that it gets them nothin
   const extra = open.filter((n) => !(n in SELF_GUARDED)), gone = Object.keys(SELF_GUARDED).filter((n) => !open.includes(n))
   ok('no NEW function is reachable by visitors (close it: revoke execute … from public, anon)', extra.length === 0, extra.join(', '))
   ok('the list in this test is up to date', gone.length === 0, 'no longer reachable, remove from the list: ' + gone.join(', '))
-  ok(`functions closed to visitors: ${fns.length - open.length} of ${fns.length}`, fns.length - open.length >= 12)
+  ok(`functions closed to visitors: ${fns.length - open.length} of ${fns.length}`, fns.length - open.length >= 30)
 
   await as(null)
   const snapshot = async () => JSON.stringify(await one(`select (select count(*) from public.bookings)::int b, (select count(*) from public.classes)::int c,

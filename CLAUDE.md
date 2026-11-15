@@ -92,6 +92,9 @@ the subscriptions from an admin screen. Hebrew and Arabic, right to left.
 - **The open-subscription form only opens new ones.** Pressing it again to
   "correct" a price gave a client 18 sessions. Corrections go through
   `admin_update_pack` / `admin_delete_pack`.
+- **`revoke … from anon` was taken for "closed".** Eighteen admin and account
+  functions stayed callable by anybody with the site's public key for months,
+  held back only by the check inside each one (patch v1.11).
 - **Test tools kept in a temp folder were wiped.** Tests live in `tests/`.
 - **A headless browser reports the page hidden** after a few seconds: screen
   tests use `awayAndBack()` instead of a bare `visibilitychange` event.
@@ -102,10 +105,12 @@ the subscriptions from an admin screen. Hebrew and Arabic, right to left.
 
 ## Known gaps
 
-- Functions written before v1.6 are reachable by a signed-out visitor and
-  refuse the caller themselves (23 of 35; listed and tested in
-  `tests/db/visitors.test.mjs`). Nothing can be done through them, but a
-  hardening patch that closes them one level earlier is still to do.
+- Patch v1.11 closes the older admin and account functions to signed-out
+  visitors. It only takes effect once the owner runs it; `npm run live` in
+  `tests/` says whether it is in. After it, a call without a session is
+  refused by the database before the function runs, and the app shows its
+  generic "network" message for that rare case (an expired session) instead
+  of "sign in".
 - Never checked on a real iPhone: the "Open Settings" button
   (`app-settings:`), and the wording of the half-hour reminder as delivered.
 - The form that opens a subscription starts at 8 sessions / ₪300, which is

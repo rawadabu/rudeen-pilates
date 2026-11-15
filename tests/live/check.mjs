@@ -16,16 +16,13 @@ import { homedir } from 'node:os'
 const SITE = 'https://rudeen-pilates.vercel.app'
 const DB = 'https://mmlzqwaskejxotnzocmf.supabase.co'
 const ZERO = '00000000-0000-0000-0000-000000000000'
-// Older functions (before v1.6) are reachable by a visitor and refuse the caller
-// themselves; see tests/db/visitors.test.mjs. function, a well-formed call, the answer a visitor gets
-const SELF_GUARDED = [
-  ['request_purchase', { p_plan_id: ZERO, p_note: null }, 'not_authenticated'],
-  ['admin_cancel_class', { p_class_id: ZERO }, 'not_admin'],
-  ['admin_grant_pack', { p_user_id: ZERO, p_sessions: 1 }, 'not_admin'],
-  ['book_class', { p_class_id: ZERO }, 'not_authenticated'],
-]
 // function, a well-formed call, the patch that added it
 const CLOSED = [
+  // closed by v1.11 (before it they were reachable and refused the visitor themselves)
+  ['request_purchase', { p_plan_id: ZERO, p_note: null }, 'v1.11'],
+  ['book_class', { p_class_id: ZERO }, 'v1.11'],
+  ['admin_cancel_class', { p_class_id: ZERO }, 'v1.11'],
+  ['admin_grant_pack', { p_user_id: ZERO, p_sessions: 1 }, 'v1.11'],
   ['send_class_reminders', {}, 'v1.6 / v1.8'],
   ['push_send', { p_body: {} }, 'push setup'],
   ['admin_cancel_day', { p_date: '2020-01-01' }, 'v1.7'],
@@ -51,13 +48,12 @@ for (const text of process.argv.slice(2)) line(bundle.includes(text), `the build
 
 // ---- the database, as a visitor
 const visitor = { apikey: key ?? '', 'content-type': 'application/json' }
-for (const [fn, args, answer] of SELF_GUARDED) {
-  const r = await (await fetch(`${DB}/rest/v1/rpc/${fn}`, { method: 'POST', headers: visitor, body: JSON.stringify(args) })).json().catch(() => ({}))
-  line(r.ok === false && r.error === answer, `${fn} exists and refuses a visitor itself`, r.ok === false ? r.error : `${r.code ?? ''} ${String(r.message ?? JSON.stringify(r)).slice(0, 90)}`)
-}
 for (const [fn, args, since] of CLOSED) {
   const r = await (await fetch(`${DB}/rest/v1/rpc/${fn}`, { method: 'POST', headers: visitor, body: JSON.stringify(args) })).json().catch(() => ({}))
-  line(r.code === '42501', `${fn} exists and is closed to visitors`, r.code === '42501' ? since : `${since}: ${r.code ?? ''} ${String(r.message ?? JSON.stringify(r)).slice(0, 90)}`)
+  // a function that exists but answers {ok:false,…} is one that patch v1.11 has not closed yet
+  const open = r.ok === false && typeof r.error === 'string'
+  line(r.code === '42501', `${fn} exists and is closed to visitors`,
+    r.code === '42501' ? since : open ? `${since}: still reachable by visitors (answered "${r.error}") — that patch has not been run` : `${since}: ${r.code ?? ''} ${String(r.message ?? JSON.stringify(r)).slice(0, 90)}`)
 }
 const col = async (table, column) => (await fetch(`${DB}/rest/v1/${table}?select=${column}&limit=1`, { headers: visitor })).json().catch(() => ({}))
 let c = await col('bookings', 'push_reminded_30_at')

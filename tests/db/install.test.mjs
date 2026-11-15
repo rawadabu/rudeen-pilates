@@ -16,6 +16,10 @@ const SHAPE = {
   triggers: `select event_object_table || ': ' || trigger_name || ' ' || event_manipulation as k, action_statement as v
                from information_schema.triggers where trigger_schema = 'public' order by 1`,
   jobs: `select jobname as k, schedule || ' ' || command as v from cron.job order by 1`,
+  // who may call each function: a patch that only changes rights (v1.11) must be in both
+  'function rights': `select p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')' as k,
+                  (select string_agg(r || ':' || has_function_privilege(r, p.oid, 'execute'), ' ' order by r) from unnest(array['anon', 'authenticated', 'service_role']) r) as v
+                from pg_proc p where p.pronamespace = 'public'::regnamespace order by 1`,
 }
 
 test('the one-paste install equals setup + every patch in order', async () => {

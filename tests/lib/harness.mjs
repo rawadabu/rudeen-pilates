@@ -19,10 +19,19 @@ export const patchFiles = () =>
 
 export const STUBS = `
   create role anon; create role authenticated; create role service_role;
+  -- As on Supabase: the three API roles may use the schema, and every table,
+  -- function and sequence created in it is granted to them by default. Row
+  -- level security and the patches' own revoke / grant lines decide the rest.
+  -- This is what lets a test really act as a visitor: set role anon.
+  grant usage on schema public to anon, authenticated, service_role;
+  alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
+  alter default privileges in schema public grant all on functions to anon, authenticated, service_role;
+  alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;
   create schema auth;
   create table auth.users (id uuid primary key default gen_random_uuid(), phone text, raw_user_meta_data jsonb default '{}'::jsonb, created_at timestamptz default now());
   create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('test.uid', true), '')::uuid $$;
   create function auth.role() returns text language sql stable as $$ select 'authenticated' $$;
+  grant usage on schema auth to anon, authenticated, service_role;
   create schema cron;
   create table cron.job (jobid bigserial, jobname text primary key, schedule text, command text, active boolean default true);
   create table cron.job_run_details (jobid bigint, runid bigserial, status text, return_message text, start_time timestamptz, end_time timestamptz);
@@ -42,13 +51,17 @@ export const pushSetupSql = () =>
 
 /** A database as a new studio gets it: the one-paste install file, and (unless
  *  push: false) the push setup on top. sql: 'install' | 'patches' (setup + every patch in order). */
-export async function fresh({ push = true, sql = 'install', empty = true } = {}) {
+export async function fresh({ push = true, sql = 'install', empty = true, upTo = null } = {}) {
   const db = new PGlite()
   await db.exec(STUBS)
   if (sql === 'install') await db.exec(strip(read('supabase_install_all.sql')))
   else {
     await db.exec(strip(read('supabase_setup.sql')))
-    for (const f of patchFiles()) await db.exec(strip(read(f)))
+    // upTo: stop after that patch (e.g. 'v1_10'), to compare a database before and after a later one
+    for (const f of patchFiles()) {
+      await db.exec(strip(read(f)))
+      if (upTo && f === `supabase_patch_${upTo}.sql`) break
+    }
   }
   if (push) await db.exec(pushSetupSql())
   const q = async (text, params) => (await db.query(text, params)).rows
@@ -91,5 +104,17 @@ export async function fresh({ push = true, sql = 'install', empty = true } = {})
     if (when.length > 5) day = when.slice(0, 10)
     await db.exec(`select set_config('test.now', '${when.length > 5 ? when : day + ' ' + when}:00', false)`)
   }
-  return { db, q, one, as, mkUser, pack, left, cls, book, guest, rpc, priv, sent, at }
+  /** Run fn as a database role, the way the API does: 'anon' = a visitor,
+   *  'authenticated' = somebody signed in (uid = who). Row-level security and
+   *  function grants apply for real. Back to the test's own role afterwards. */
+  const asRole = async (role, uid, fn) => {
+    await as(uid)
+    await db.exec(`set role ${role}`)
+    try { return await fn() } finally { await db.exec('reset role'); await as(null) }
+  }
+  /** true if that role can read the table / view right now (empty is fine) */
+  const canRead = async (rel) => { try { await db.query(`select 1 from public.${rel} limit 1`); return true } catch { return false } }
+  /** the error code of a call, or null if it went through: code(() => rpc(...)) */
+  const code = async (fn) => { try { await fn(); return null } catch (e) { return e.code ?? e.message } }
+  return { db, q, one, as, mkUser, pack, left, cls, book, guest, rpc, priv, sent, at, asRole, canRead, code }
 }
