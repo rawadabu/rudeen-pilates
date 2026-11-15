@@ -9,9 +9,15 @@
     "test:fn": "node --test \"push-function/*.test.mjs\"",
     "test:app": "npm --prefix ../app run typecheck && npm --prefix ../app run build",
     "test:ui": "node --test --test-concurrency=1 \"ui/*.test.mjs\"",
-    "live": "node live/check.mjs"
+    "live": "node live/check.mjs",
+    "test:local": "node --test --test-concurrency=1 \"local/*.test.mjs\"",
+    "test:all": "npm test && npm run test:local",
+    "local:up": "node -e \"import('./local/stack.mjs').then((m) => console.log(m.up().apiUrl))\"",
+    "local:down": "node -e \"import('./local/stack.mjs').then((m) => console.log(m.down() ? 'stopped' : 'could not stop'))\""
   },
   "devDependencies": {
-    "@electric-sql/pglite": "^0.3.14"
+    "@electric-sql/pglite": "^0.3.14",
+    "pg": "8.23.1",
+    "@supabase/supabase-js": "2.118.0"
   }
 }

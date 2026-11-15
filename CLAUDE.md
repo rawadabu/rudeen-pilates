@@ -17,6 +17,9 @@ the subscriptions from an admin screen. Hebrew and Arabic, right to left.
 - `supabase/functions/push/` — the edge function that sends every
   notification (web push, Apple, Android).
 - `tests/` — the checks. Read `tests/README.md`.
+- `supabase/config.toml` — the local test copy of the database (a real
+  Supabase in Docker on this computer, started by `tests/local`). It is not
+  the live project and holds no key of it.
 - `RELEASE.md` — how a change reaches the clients. Follow it step by step.
 - `SETUP_GUIDE.md`, `NATIVE_GUIDE.md` — how the live project was set up, and
   the studio's day-to-day.
@@ -111,6 +114,12 @@ the subscriptions from an admin screen. Hebrew and Arabic, right to left.
   refused by the database before the function runs, and the app shows its
   generic "network" message for that rare case (an expired session) instead
   of "sign in".
+- **An open question for the owner:** a session can be used to book a class
+  that takes place after the subscription's end date, as long as the booking
+  is made before it ends (`book_class` looks at whether the subscription is
+  valid today, not on the day of the class). With a five-week timetable that
+  stretches a one-month subscription by up to five weeks. Seen in the local
+  copy on 2026-11-15; not changed, because it may be intended.
 - Never checked on a real iPhone: the "Open Settings" button
   (`app-settings:`), and the wording of the half-hour reminder as delivered.
 - The form that opens a subscription starts at 8 sessions / ₪300, which is

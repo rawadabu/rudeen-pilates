@@ -17,6 +17,14 @@ cd tests && npm test
 All four parts must pass (database, push function, app build, screens). If a
 change has no test, write one first. Then commit locally.
 
+If the change touches the database (a new patch, or anything about who may
+read or call what), also run the local copy — a real Supabase on this
+computer, loaded with the same SQL:
+
+```bash
+npm run test:local
+```
+
 Say plainly what the tests could not check: anything on a real iPhone, and
 the live database.
 

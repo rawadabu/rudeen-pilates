@@ -1,0 +1,43 @@
+# The LOCAL TEST COPY of the database, used by tests/local.
+#
+# This is not the live project. Nothing here points at it and no key of it is
+# used: `npm run local:up` in tests/ starts a complete Supabase (database, API,
+# sign-in) in Docker on this computer, the SQL files of this repo are loaded
+# into it the same way they were loaded into live, and the tests then act as a
+# visitor, a client and the admin through the real API.
+#
+# Every value below is for that local copy only. Anything not listed keeps the
+# Supabase CLI's default.
+project_id = "rudeen-local"
+
+[api]
+port = 55321
+
+[db]
+port = 55322
+shadow_port = 55320
+major_version = 17
+
+[studio]
+enabled = false
+
+[auth]
+site_url = "http://127.0.0.1:5173"
+
+# Sign-in by phone, as on live. No SMS is ever sent from here: the two test
+# numbers below always get the code 123456, and the "provider" is a fake one
+# that only has to exist for phone sign-in to be switched on.
+[auth.sms]
+enable_signup = true
+enable_confirmations = false
+
+[auth.sms.test_otp]
+972500000001 = "123456"
+972500000002 = "123456"
+972500000003 = "123456"
+
+[auth.sms.twilio]
+enabled = true
+account_sid = "local-test"
+message_service_sid = "local-test"
+auth_token = "local-test"
